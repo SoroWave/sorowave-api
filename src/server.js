@@ -13,7 +13,8 @@ const testnet = {
   horizonUrl: 'https://horizon-testnet.stellar.org',
   friendbotUrl: 'https://friendbot.stellar.org',
   contractId: process.env.SOROWAVE_CONTRACT_ID || '',
-  tokenContractId: process.env.SOROWAVE_TOKEN_CONTRACT_ID || ''
+  tokenContractId: process.env.SOROWAVE_TOKEN_CONTRACT_ID || '',
+  waveId: process.env.SOROWAVE_WAVE_ID || ''
 };
 
 const previewWave = {
@@ -45,14 +46,14 @@ async function readDb() {
     db.applications ||= [];
     db.tasks = db.tasks.map(task => {
       let repo = task.repo || 'SoroWave/sorowave-app';
-      if (/^sorowave\//i.test(repo)) repo = `SoroWave/sorowave-${repo.split('/')[1]}`;
+      if (/^sorowave\//i.test(repo) && !/^sorowave-/i.test(repo.split('/')[1] || '')) repo = `SoroWave/sorowave-${repo.split('/')[1]}`;
       const complexity = task.complexity || (task.level === 'Advanced' ? 'High' : task.level === 'Small feature' ? 'Medium' : 'Trivial');
       const issueNumber = task.issueNumber || Number(task.issueUrl?.match(/\/issues\/(\d+)/)?.[1]) || 1;
       return {
         ...task,
         repo,
         issueNumber,
-        issueUrl: task.issueUrl || `https://github.com/${repo}/issues/${issueNumber}`,
+        issueUrl: `https://github.com/${repo}/issues/${issueNumber}`,
         waveId: task.waveId || previewWave.id,
         complexity,
         points: task.points || pointsFor(complexity)
@@ -160,6 +161,52 @@ function routeId(pathname, prefix) {
   catch { return ''; }
 }
 
+async function checkStellarEndpoint(name, url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const payload = await response.json().catch(() => ({}));
+    const rpcError = payload.error?.message;
+    const rpcHealthy = name !== 'Soroban RPC' || payload.result?.status === 'healthy';
+    return {
+      name,
+      status: response.ok && !rpcError && rpcHealthy ? 'online' : 'degraded',
+      detail: !response.ok ? `HTTP ${response.status}` : rpcError || (!rpcHealthy ? 'RPC did not report a healthy state.' : 'Responding')
+    };
+  } catch (error) {
+    return {
+      name,
+      status: 'offline',
+      detail: error.name === 'AbortError' ? 'Timed out after 4 seconds' : 'Could not reach endpoint'
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function stellarStatus() {
+  const [horizon, rpc] = await Promise.all([
+    checkStellarEndpoint('Horizon', `${testnet.horizonUrl}/`, { headers: { accept: 'application/json' } }),
+    checkStellarEndpoint('Soroban RPC', testnet.rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' })
+    })
+  ]);
+  const services = [horizon, rpc];
+  return {
+    network: testnet.network,
+    checkedAt: new Date().toISOString(),
+    status: services.every(service => service.status === 'online') ? 'healthy' : 'degraded',
+    services,
+    contracts: {
+      pool: testnet.contractId ? 'configured' : 'not-configured',
+      token: testnet.tokenContractId ? 'configured' : 'not-configured'
+    }
+  };
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') {
@@ -174,6 +221,7 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, name: 'sorowave-api' });
     if (req.method === 'GET' && url.pathname === '/stellar/config') return send(res, 200, testnet);
+    if (req.method === 'GET' && url.pathname === '/stellar/status') return send(res, 200, await stellarStatus());
 
     if (req.method === 'GET' && url.pathname.startsWith('/stellar/accounts/')) {
       const address = routeId(url.pathname, '/stellar/accounts/');
@@ -348,6 +396,7 @@ const server = createServer(async (req, res) => {
       } else if (input.status === 'Completed') {
         if (!['Assigned', 'PR submitted'].includes(application.status) || !application.prUrl) return send(res, 409, { error: 'A submitted pull request is required before marking work complete.' });
         if (application.status === 'Completed') return send(res, 409, { error: 'Points were already awarded for this application.' });
+        if (typeof input.onchainAwardTx !== 'string' || !/^[a-f0-9]{64}$/i.test(input.onchainAwardTx)) return send(res, 400, { error: 'A confirmed Stellar transaction hash is required to complete this application.' });
         const pull = validPullRequestUrl(application.prUrl, application.repo);
         if (!pull) return send(res, 400, { error: 'The saved pull request URL is invalid.' });
         const verified = await fetchPublicPullRequest(pull, task.issueNumber);
@@ -355,6 +404,7 @@ const server = createServer(async (req, res) => {
         if (!verified.data.merged_at) return send(res, 409, { error: 'The linked pull request must be merged before completion points are awarded.' });
         application.status = 'Completed';
         application.prMerged = true;
+        application.onchainAwardTx = input.onchainAwardTx;
         application.pointsAwarded = task.points;
         task.status = 'Completed';
         task.completedAt = new Date().toISOString();

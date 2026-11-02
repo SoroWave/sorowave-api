@@ -20,6 +20,7 @@ The API listens on `http://localhost:4173`. Set `PORT` to change the port.
 
 - `GET /health` — health check
 - `GET /stellar/config` — public Stellar testnet RPC/Horizon settings and optional contract IDs
+- `GET /stellar/status` — bounded Horizon and Soroban RPC health checks, plus whether pool/token contract IDs are configured
 - `GET /stellar/accounts/:address` — validate a public key and read its Horizon balances
 - `GET /waves` and `GET /waves/:id` — read preview cycles and issue counts
 - `GET /tasks?page=1&limit=20` — paginated open issue list; supports `q`, `category`, and `waveId`
