@@ -46,14 +46,14 @@ async function readDb() {
     db.applications ||= [];
     db.tasks = db.tasks.map(task => {
       let repo = task.repo || 'SoroWave/sorowave-app';
-      if (/^sorowave\//i.test(repo)) repo = `SoroWave/sorowave-${repo.split('/')[1]}`;
+      if (/^sorowave\//i.test(repo) && !/^sorowave-/i.test(repo.split('/')[1] || '')) repo = `SoroWave/sorowave-${repo.split('/')[1]}`;
       const complexity = task.complexity || (task.level === 'Advanced' ? 'High' : task.level === 'Small feature' ? 'Medium' : 'Trivial');
       const issueNumber = task.issueNumber || Number(task.issueUrl?.match(/\/issues\/(\d+)/)?.[1]) || 1;
       return {
         ...task,
         repo,
         issueNumber,
-        issueUrl: task.issueUrl || `https://github.com/${repo}/issues/${issueNumber}`,
+        issueUrl: `https://github.com/${repo}/issues/${issueNumber}`,
         waveId: task.waveId || previewWave.id,
         complexity,
         points: task.points || pointsFor(complexity)
@@ -396,6 +396,7 @@ const server = createServer(async (req, res) => {
       } else if (input.status === 'Completed') {
         if (!['Assigned', 'PR submitted'].includes(application.status) || !application.prUrl) return send(res, 409, { error: 'A submitted pull request is required before marking work complete.' });
         if (application.status === 'Completed') return send(res, 409, { error: 'Points were already awarded for this application.' });
+        if (typeof input.onchainAwardTx !== 'string' || !/^[a-f0-9]{64}$/i.test(input.onchainAwardTx)) return send(res, 400, { error: 'A confirmed Stellar transaction hash is required to complete this application.' });
         const pull = validPullRequestUrl(application.prUrl, application.repo);
         if (!pull) return send(res, 400, { error: 'The saved pull request URL is invalid.' });
         const verified = await fetchPublicPullRequest(pull, task.issueNumber);
@@ -403,6 +404,7 @@ const server = createServer(async (req, res) => {
         if (!verified.data.merged_at) return send(res, 409, { error: 'The linked pull request must be merged before completion points are awarded.' });
         application.status = 'Completed';
         application.prMerged = true;
+        application.onchainAwardTx = input.onchainAwardTx;
         application.pointsAwarded = task.points;
         task.status = 'Completed';
         task.completedAt = new Date().toISOString();
