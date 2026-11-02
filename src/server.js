@@ -160,6 +160,52 @@ function routeId(pathname, prefix) {
   catch { return ''; }
 }
 
+async function checkStellarEndpoint(name, url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const payload = await response.json().catch(() => ({}));
+    const rpcError = payload.error?.message;
+    const rpcHealthy = name !== 'Soroban RPC' || payload.result?.status === 'healthy';
+    return {
+      name,
+      status: response.ok && !rpcError && rpcHealthy ? 'online' : 'degraded',
+      detail: !response.ok ? `HTTP ${response.status}` : rpcError || (!rpcHealthy ? 'RPC did not report a healthy state.' : 'Responding')
+    };
+  } catch (error) {
+    return {
+      name,
+      status: 'offline',
+      detail: error.name === 'AbortError' ? 'Timed out after 4 seconds' : 'Could not reach endpoint'
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function stellarStatus() {
+  const [horizon, rpc] = await Promise.all([
+    checkStellarEndpoint('Horizon', `${testnet.horizonUrl}/`, { headers: { accept: 'application/json' } }),
+    checkStellarEndpoint('Soroban RPC', testnet.rpcUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' })
+    })
+  ]);
+  const services = [horizon, rpc];
+  return {
+    network: testnet.network,
+    checkedAt: new Date().toISOString(),
+    status: services.every(service => service.status === 'online') ? 'healthy' : 'degraded',
+    services,
+    contracts: {
+      pool: testnet.contractId ? 'configured' : 'not-configured',
+      token: testnet.tokenContractId ? 'configured' : 'not-configured'
+    }
+  };
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') {
@@ -174,6 +220,7 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true, name: 'sorowave-api' });
     if (req.method === 'GET' && url.pathname === '/stellar/config') return send(res, 200, testnet);
+    if (req.method === 'GET' && url.pathname === '/stellar/status') return send(res, 200, await stellarStatus());
 
     if (req.method === 'GET' && url.pathname.startsWith('/stellar/accounts/')) {
       const address = routeId(url.pathname, '/stellar/accounts/');
