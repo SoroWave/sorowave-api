@@ -2,9 +2,10 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 const port = Number(process.env.PORT || 4173);
+const maintainerToken = process.env.SOROWAVE_MAINTAINER_TOKEN || '';
 const dbPath = resolve('data/db.json');
 const testnet = {
   network: 'testnet',
@@ -85,6 +86,22 @@ function send(res, status, data) {
     'access-control-allow-headers': 'content-type'
   });
   res.end(JSON.stringify(data));
+}
+
+function isMaintainer(req) {
+  const supplied = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1] || '';
+  const suppliedBytes = Buffer.from(supplied);
+  const expectedBytes = Buffer.from(maintainerToken);
+  if (!expectedBytes.length || suppliedBytes.length !== expectedBytes.length) return false;
+  return timingSafeEqual(suppliedBytes, expectedBytes);
+}
+
+function requireMaintainer(req, res) {
+  if (isMaintainer(req)) return true;
+  send(res, maintainerToken ? 401 : 503, {
+    error: maintainerToken ? 'Maintainer authentication required.' : 'Maintainer actions are disabled until SOROWAVE_MAINTAINER_TOKEN is configured.'
+  });
+  return false;
 }
 
 async function readBody(req) {
@@ -300,6 +317,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && url.pathname === '/tasks') {
+      if (!requireMaintainer(req, res)) return;
       const input = await readBody(req);
       const issue = validRepoIssue(input);
       if (!issue) return send(res, 400, { error: 'Provide a valid public GitHub issue URL.' });
@@ -333,10 +351,14 @@ const server = createServer(async (req, res) => {
       const db = await readDb();
       const applicant = url.searchParams.get('applicant');
       const waveId = url.searchParams.get('waveId');
-      const applications = db.applications.filter(item =>
+      const matching = db.applications.filter(item =>
         (!applicant || item.applicant.toLowerCase() === applicant.toLowerCase()) &&
         (!waveId || item.waveId === waveId)
       );
+      if (!applicant && !requireMaintainer(req, res)) return;
+      const applications = isMaintainer(req) ? matching : matching.map(({ id, taskId, waveId, taskTitle, repo, issueNumber, applicant, status, prUrl, prMerged, pointsAwarded, createdAt, updatedAt }) => ({
+        id, taskId, waveId, taskTitle, repo, issueNumber, applicant, status, prUrl, prMerged, pointsAwarded, createdAt, updatedAt
+      }));
       return send(res, 200, { applications });
     }
 
@@ -369,6 +391,8 @@ const server = createServer(async (req, res) => {
       const application = db.applications.find(item => item.id === id);
       if (!application) return send(res, 404, { error: 'Application not found.' });
       const task = db.tasks.find(item => item.id === application.taskId);
+
+      if (input.status !== undefined && !requireMaintainer(req, res)) return;
 
       if (input.prUrl !== undefined) {
         if (application.status !== 'Assigned') return send(res, 409, { error: 'A pull request can only be submitted for an assigned issue.' });
