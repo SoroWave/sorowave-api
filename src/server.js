@@ -13,7 +13,8 @@ const testnet = {
   horizonUrl: 'https://horizon-testnet.stellar.org',
   friendbotUrl: 'https://friendbot.stellar.org',
   contractId: process.env.SOROWAVE_CONTRACT_ID || '',
-  tokenContractId: process.env.SOROWAVE_TOKEN_CONTRACT_ID || ''
+  tokenContractId: process.env.SOROWAVE_TOKEN_CONTRACT_ID || '',
+  waveId: process.env.SOROWAVE_WAVE_ID || ''
 };
 
 const previewWave = {
