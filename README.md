@@ -4,7 +4,7 @@ A small Node.js API for listing open work, collecting contributor applications, 
 
 ## Run
 
-Requires Node.js 20 or newer.
+Requires Node.js 18 or newer.
 
 ```sh
 npm start
@@ -20,8 +20,11 @@ The API listens on `http://localhost:4173`. Set `PORT` to change the port.
 - `GET /stellar/config` — public Stellar testnet RPC/Horizon settings and optional contract IDs
 - `GET /stellar/accounts/:address` — validate a public key and read its Horizon balances
 - `GET /tasks` — list tasks (`?category=contracts` is supported)
-- `POST /tasks` — create a task
+- `GET /tasks?all=true` — include tasks in all statuses
+- `GET /tasks/:id` — read a task
+- `POST /tasks` — create a task with title, repo, description, category, difficulty, and demo points
 - `GET /applications` — list applications (prototype maintainer view)
+- `GET /applications?applicant=username` — list applications for a GitHub username
 - `POST /applications` — apply to a task
 
 Applications may include an optional `walletAddress` alongside the GitHub username. No private keys or signing material belong in this API.
