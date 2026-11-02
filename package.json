@@ -4,6 +4,7 @@
   "private": true,
   "description": "A starter API for community-maintained Stellar work",
   "type": "module",
-  "scripts": {"start": "node src/server.js"},
-  "engines": {"node": ">=20"}
+  "scripts": {"start": "node --env-file-if-exists=.env src/server.js"},
+  "dependencies": {"@stellar/stellar-sdk": "17.4.0"},
+  "engines": {"node": ">=22.12.0"}
 }
