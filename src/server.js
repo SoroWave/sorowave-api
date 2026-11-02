@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { rpc, scValToNative, StrKey } from '@stellar/stellar-sdk';
 
 const port = Number(process.env.PORT || 4173);
 const maintainerToken = process.env.SOROWAVE_MAINTAINER_TOKEN || '';
@@ -17,6 +18,7 @@ const testnet = {
   tokenContractId: process.env.SOROWAVE_TOKEN_CONTRACT_ID || '',
   waveId: process.env.SOROWAVE_WAVE_ID || ''
 };
+const soroban = new rpc.Server(testnet.rpcUrl);
 
 const previewWave = {
   id: 'sorowave-community-preview',
@@ -171,6 +173,40 @@ async function fetchPublicPullRequest(pull, issueNumber) {
   const closesIssue = new RegExp(`(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issueNumber}\\b`, 'i').test(data.body || '');
   if (!closesIssue) return { error: `The pull request description must include “Closes #${issueNumber}” or an equivalent GitHub keyword.`, status: 400 };
   return { data };
+}
+
+async function verifyAwardTransaction(hash, application, points) {
+  if (!testnet.contractId || !/^\d+$/.test(testnet.waveId)) {
+    return { error: 'Soroban pool contract and numeric wave ID must be configured before completion.', status: 503 };
+  }
+  let transaction;
+  try {
+    transaction = await soroban.getTransaction(hash);
+  } catch {
+    return { error: 'Could not verify the award transaction with Stellar Testnet. Try again later.', status: 503 };
+  }
+  if (transaction.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    return { error: 'The Stellar transaction is not confirmed successfully.', status: 409 };
+  }
+  const expectedWaveId = BigInt(testnet.waveId);
+  const expectedPoints = BigInt(points);
+  const matchingAward = transaction.events.contractEventsXdr.flat().some(event => {
+    if (!event.contractId || StrKey.encodeContract(event.contractId.toXdrObject()) !== testnet.contractId) return false;
+    if (event.body.type !== 'v0') return false;
+    const { topics, data } = event.body.v0;
+    if (topics.length !== 4) return false;
+    try {
+      return scValToNative(topics[0]) === 'application_points_awarded' &&
+        scValToNative(topics[1]) === expectedWaveId &&
+        scValToNative(topics[2]) === application.id &&
+        scValToNative(topics[3]).toString() === application.walletAddress &&
+        scValToNative(data) === expectedPoints;
+    } catch { return false; }
+  });
+  return matchingAward ? { ok: true } : {
+    error: 'The confirmed transaction does not contain this application’s matching Soroban points award.',
+    status: 409
+  };
 }
 
 function routeId(pathname, prefix) {
@@ -426,6 +462,8 @@ const server = createServer(async (req, res) => {
         const verified = await fetchPublicPullRequest(pull, task.issueNumber);
         if (verified.error) return send(res, verified.status, { error: verified.error });
         if (!verified.data.merged_at) return send(res, 409, { error: 'The linked pull request must be merged before completion points are awarded.' });
+        const award = await verifyAwardTransaction(input.onchainAwardTx, application, task.points);
+        if (award.error) return send(res, award.status, { error: award.error });
         application.status = 'Completed';
         application.prMerged = true;
         application.onchainAwardTx = input.onchainAwardTx;

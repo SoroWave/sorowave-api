@@ -4,7 +4,7 @@ Node.js API for the SoroWave community-cycle preview. It stores cycles, GitHub i
 
 ## Run
 
-Requires Node.js 18 or newer.
+Requires Node.js 22.12 or newer.
 
 ```sh
 npm start
@@ -40,4 +40,4 @@ Application status changes (assignment, rejection, and completion) require the m
 
 ## Prototype limits
 
-This is still a preview service. GitHub usernames are not authenticated, and a public username lookup can reveal that the user applied and the application status. The API stores records in a local JSON file; use a host with durable storage and backups before public use. Completion currently validates that a merged PR exists and requires a maintainer token, but does not independently verify the award transaction's Soroban event. The contract is unaudited and the API has no webhook sync or production database. Do not use real funds.
+This is still a preview service. GitHub usernames are not authenticated, and a public username lookup can reveal that the user applied and the application status. Before completing an application, the API checks Stellar Testnet for a successful transaction containing the configured pool's matching application ID, contributor wallet, wave ID, and point amount. The contract is unaudited. The API stores records in a local JSON file; use a host with durable storage and backups before public use. It has no webhook sync or production database. Do not use real funds.
