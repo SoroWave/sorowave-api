@@ -2,7 +2,7 @@
   "name": "sorowave-api",
   "version": "0.1.0",
   "private": true,
-  "description": "A starter API for community-maintained Stellar work",
+  "description": "API for SoroWave's GitHub issue contribution-cycle preview",
   "type": "module",
   "scripts": {"start": "node src/server.js"},
   "dependencies": {"dotenv": "16.4.7"},
