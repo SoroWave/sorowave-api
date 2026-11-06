@@ -14,6 +14,8 @@ Run `npm install` once before starting the API.
 
 Copy `.env.example` to `.env` to set the port, published testnet contract IDs, and a private maintainer token. Generate a token with `openssl rand -hex 32`. Never commit the resulting `.env` or expose the token as a `VITE_` frontend variable. Maintainer actions return `503` until the token is configured.
 
+For a local demo, set a private development-only value for `SOROWAVE_MAINTAINER_TOKEN` in `.env`. The app asks for this value when you open the maintainer desk or add an issue.
+
 The API listens on `http://localhost:4173`. Set `PORT` to change the port.
 
 ## Deploy the app and API on Render
@@ -43,6 +45,8 @@ The contract ID, token contract ID, and wave ID are left blank initially. Fill t
 Complexity maps to 100 / 150 / 200 preview points. The API limits each contributor to 15 pending applications per cycle and 4 assigned issues per organization. Accepting one applicant makes other pending applications for that issue inactive. Pull requests must exist publicly, target the same GitHub repository, and include a GitHub issue-closing keyword. Completion points are recorded only after GitHub reports the PR as merged and a maintainer records completion.
 
 Application status changes (assignment, rejection, and completion) require the maintainer token. Contributor PR submissions do not. Public applicant lookups omit application messages, wallet addresses, and award transaction hashes. The app prompts maintainers for the token and keeps it only in the current browser tab. Applications may include an optional `walletAddress` alongside the GitHub username. No private keys or signing material belong in this API. GitHub issue lookups use the public REST API and follow its unauthenticated rate limits.
+
+The contract repository's current issue #1 describes bounty operations absent from the wave-pool contract. The app no longer lists that issue as starter work until its GitHub description is updated to match the contract.
 
 ## Prototype limits
 

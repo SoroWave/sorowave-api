@@ -34,8 +34,7 @@ const previewWave = {
 
 const starterTasks = [
   { id: 'task-app-search', title: 'Add keyword search to the task board', description: 'Let contributors search task titles, repository names, and issue descriptions. Keep the search usable on mobile and announce the result count to assistive technology.', repo: 'SoroWave/sorowave-app', issueNumber: 1, category: 'developer-tools', complexity: 'Medium', points: 150 },
-  { id: 'task-api-pagination', title: 'Add pagination to GET /tasks', description: 'Add stable page and page-size parameters to the task endpoint. Return pagination metadata and keep the default response bounded.', repo: 'SoroWave/sorowave-api', issueNumber: 1, category: 'developer-tools', complexity: 'Medium', points: 150 },
-  { id: 'task-contract-lifecycle', title: 'Add Soroban tests for the bounty lifecycle', description: 'Cover contract initialization, bounty creation, release, cancellation, authorization failures, and invalid state transitions with Soroban test utilities.', repo: 'SoroWave/sorowave-contracts', issueNumber: 1, category: 'contracts', complexity: 'High', points: 200 }
+  { id: 'task-api-pagination', title: 'Add pagination to GET /tasks', description: 'Add a bounded limit and stable next-page cursor to GET /tasks. Keep category filtering consistent across pages, reject malformed values, and document example requests and responses.', repo: 'SoroWave/sorowave-api', issueNumber: 1, category: 'developer-tools', complexity: 'Medium', points: 150 }
 ].map(task => ({ ...task, issueUrl: `https://github.com/${task.repo}/issues/${task.issueNumber}`, waveId: previewWave.id, status: 'Open', createdAt: '2026-11-02T00:00:00.000Z' }));
 
 const initial = { waves: [previewWave], tasks: starterTasks, applications: [] };
@@ -52,8 +51,12 @@ async function readDb() {
       if (/^sorowave\//i.test(repo) && !/^sorowave-/i.test(repo.split('/')[1] || '')) repo = `SoroWave/sorowave-${repo.split('/')[1]}`;
       const complexity = task.complexity || (task.level === 'Advanced' ? 'High' : task.level === 'Small feature' ? 'Medium' : 'Trivial');
       const issueNumber = task.issueNumber || Number(task.issueUrl?.match(/\/issues\/(\d+)/)?.[1]) || 1;
+      const description = task.id === 'task-api-pagination'
+        ? starterTasks.find(item => item.id === task.id).description
+        : task.description;
       return {
         ...task,
+        description,
         repo,
         issueNumber,
         issueUrl: `https://github.com/${repo}/issues/${issueNumber}`,
@@ -62,6 +65,13 @@ async function readDb() {
         points: task.points || pointsFor(complexity)
       };
     });
+    let migrated = false;
+    const outdatedContractTask = db.tasks.find(task => task.id === 'task-contract-lifecycle');
+    if (outdatedContractTask?.status === 'Open') {
+      outdatedContractTask.status = 'Cancelled';
+      migrated = true;
+    }
+    if (migrated) await saveDb(db);
     db.applications = db.applications.map(item => {
       const task = db.tasks.find(candidate => candidate.id === item.taskId);
       return { ...item, waveId: item.waveId || task?.waveId || previewWave.id, repo: item.repo || task?.repo || '', issueNumber: item.issueNumber || task?.issueNumber, prUrl: item.prUrl || null, pointsAwarded: item.pointsAwarded || 0, updatedAt: item.updatedAt || item.createdAt };
