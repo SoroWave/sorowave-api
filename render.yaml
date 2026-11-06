@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: sorowave-api
+    runtime: node
+    plan: 0.5c-512mb
+    region: frankfurt
+    repo: https://github.com/SoroWave/sorowave-api.git
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    disk:
+      name: sorowave-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: SOROWAVE_DATA_DIR
+        value: /var/data
+      - key: SOROWAVE_MAINTAINER_TOKEN
+        generateValue: true
+      - key: SOROWAVE_CONTRACT_ID
+        value: ""
+      - key: SOROWAVE_TOKEN_CONTRACT_ID
+        value: ""
+      - key: SOROWAVE_WAVE_ID
+        value: ""
+
+  - type: web
+    runtime: static
+    name: sorowave-app
+    repo: https://github.com/SoroWave/sorowave-app.git
+    branch: main
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: sorowave-api
+          envVarKey: RENDER_EXTERNAL_URL

@@ -16,6 +16,12 @@ Copy `.env.example` to `.env` to set the port, published testnet contract IDs, a
 
 The API listens on `http://localhost:4173`. Set `PORT` to change the port.
 
+## Deploy the app and API on Render
+
+This repository includes a Blueprint that creates the API and the SoroWave app together. In the Render Dashboard, create a Blueprint from `SoroWave/sorowave-api` on `main` and allow Render to read both SoroWave repositories. Review the displayed service plan and charges before applying it. The API uses a paid web service with a 1 GB persistent disk; the app is a static site. Render generates the maintainer token and connects the app's `VITE_API_URL` to the API's public URL. The API stores its JSON database under the mounted disk path so it survives restarts and deploys.
+
+The contract ID, token contract ID, and wave ID are left blank initially. Fill them in on the API service after the Soroban contract is deployed and initialized on Stellar Testnet. The testnet contract deployment and pool funding still require an operator wallet to sign transactions.
+
 ## Routes
 
 - `GET /health` — health check

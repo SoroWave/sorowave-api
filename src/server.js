@@ -7,7 +7,7 @@ import { rpc, scValToNative, StrKey } from '@stellar/stellar-sdk';
 
 const port = Number(process.env.PORT || 4173);
 const maintainerToken = process.env.SOROWAVE_MAINTAINER_TOKEN || '';
-const dbPath = resolve('data/db.json');
+const dbPath = resolve(process.env.SOROWAVE_DATA_DIR || 'data', 'db.json');
 const testnet = {
   network: 'testnet',
   networkPassphrase: 'Test SDF Network ; September 2015',
